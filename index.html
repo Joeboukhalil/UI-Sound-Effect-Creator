@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>UI Sound Effect Creator</title>
+<style>
+body{font-family:Arial,sans-serif;background:#111;color:#fff;margin:0;padding:20px}
+.container{max-width:900px;margin:auto}
+h1{text-align:center}
+.card{background:#1e1e1e;padding:15px;border-radius:12px;margin:10px 0}
+label{display:block;margin-top:10px}
+select,input,button{width:100%;padding:10px;margin-top:5px;border-radius:8px;border:none}
+button{cursor:pointer}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+</style>
+</head>
+<body>
+<div class="container">
+<h1>UI Sound Effect Creator</h1>
+
+<div class="card">
+<label>Sound Effect</label>
+<select id="sound">
+<option>Button Click</option>
+<option>Soft Tap</option>
+<option>Menu Open</option>
+<option>Menu Close</option>
+<option>Notification Ping</option>
+<option>Success Chime</option>
+<option>Error Buzz</option>
+<option>Warning Beep</option>
+<option>Keyboard Typing</option>
+<option>Digital Pop</option>
+</select>
+
+<label>Volume</label>
+<input id="volume" type="range" min="0.1" max="1" step="0.1" value="0.8">
+
+<label>Pitch</label>
+<input id="pitch" type="range" min="0.5" max="2" step="0.1" value="1">
+
+<div class="row">
+<button onclick="playSound()">Play</button>
+<button onclick="downloadSound()">Download WAV</button>
+</div>
+</div>
+</div>
+
+<script>
+function generateOfflineBuffer(type){
+  const sampleRate=44100;
+  const duration=0.5;
+  const length=sampleRate*duration;
+  const ctx=new OfflineAudioContext(1,length,sampleRate);
+
+  const osc=ctx.createOscillator();
+  const gain=ctx.createGain();
+
+  const pitch=parseFloat(document.getElementById("pitch").value);
+  const volume=parseFloat(document.getElementById("volume").value);
+
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+
+  switch(type){
+    case "Button Click":
+      osc.frequency.setValueAtTime(700*pitch,0);
+      osc.frequency.exponentialRampToValueAtTime(300*pitch,0.05);
+      break;
+    case "Soft Tap":
+      osc.frequency.value=250*pitch;
+      break;
+    case "Menu Open":
+      osc.frequency.setValueAtTime(300*pitch,0);
+      osc.frequency.linearRampToValueAtTime(900*pitch,0.2);
+      break;
+    case "Menu Close":
+      osc.frequency.setValueAtTime(900*pitch,0);
+      osc.frequency.linearRampToValueAtTime(300*pitch,0.2);
+      break;
+    case "Notification Ping":
+      osc.frequency.value=900*pitch;
+      break;
+    case "Success Chime":
+      osc.frequency.setValueAtTime(600*pitch,0);
+      osc.frequency.setValueAtTime(900*pitch,0.15);
+      break;
+    case "Error Buzz":
+      osc.type="square";
+      osc.frequency.value=120*pitch;
+      break;
+    case "Warning Beep":
+      osc.frequency.value=700*pitch;
+      break;
+    case "Keyboard Typing":
+      osc.frequency.value=500*pitch;
+      break;
+    case "Digital Pop":
+      osc.frequency.value=1200*pitch;
+      break;
+  }
+
+  gain.gain.setValueAtTime(volume,0);
+  gain.gain.exponentialRampToValueAtTime(0.001,duration);
+
+  osc.start();
+  osc.stop(duration);
+
+  return ctx.startRendering();
+}
+
+async function playSound(){
+  const type=document.getElementById("sound").value;
+  const buffer=await generateOfflineBuffer(type);
+
+  const ctx=new (window.AudioContext||window.webkitAudioContext)();
+  const src=ctx.createBufferSource();
+  src.buffer=buffer;
+  src.connect(ctx.destination);
+  src.start();
+}
+
+function audioBufferToWav(buffer){
+  const numChannels=buffer.numberOfChannels;
+  const sampleRate=buffer.sampleRate;
+  const format=1;
+  const bitDepth=16;
+
+  let samples=buffer.getChannelData(0);
+  let blockAlign=numChannels*bitDepth/8;
+  let byteRate=sampleRate*blockAlign;
+  let dataSize=samples.length*2;
+
+  let wav=new ArrayBuffer(44+dataSize);
+  let view=new DataView(wav);
+
+  function writeString(v,o,s){
+    for(let i=0;i<s.length;i++)v.setUint8(o+i,s.charCodeAt(i));
+  }
+
+  writeString(view,0,'RIFF');
+  view.setUint32(4,36+dataSize,true);
+  writeString(view,8,'WAVE');
+  writeString(view,12,'fmt ');
+  view.setUint32(16,16,true);
+  view.setUint16(20,format,true);
+  view.setUint16(22,numChannels,true);
+  view.setUint32(24,sampleRate,true);
+  view.setUint32(28,byteRate,true);
+  view.setUint16(32,blockAlign,true);
+  view.setUint16(34,bitDepth,true);
+  writeString(view,36,'data');
+  view.setUint32(40,dataSize,true);
+
+  let offset=44;
+  for(let i=0;i<samples.length;i++,offset+=2){
+    let s=Math.max(-1,Math.min(1,samples[i]));
+    view.setInt16(offset,s<0?s*0x8000:s*0x7FFF,true);
+  }
+  return wav;
+}
+
+async function downloadSound(){
+  const type=document.getElementById("sound").value;
+  const buffer=await generateOfflineBuffer(type);
+  const wav=audioBufferToWav(buffer);
+
+  const blob=new Blob([wav],{type:'audio/wav'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download=type.replace(/\s+/g,'_')+'.wav';
+  a.click();
+}
+</script>
+</body>
+</html>
